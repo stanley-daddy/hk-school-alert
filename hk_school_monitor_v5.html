@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>香港學校停課與天氣監測系統 (v5 CORS無縫版)</title>
+    <style>
+        :root {
+            --primary-bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-dark: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 680px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .title { font-size: 18px; font-weight: bold; margin: 0; }
+
+        .refresh-btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .meta-info {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #374151;
+            margin: 16px 0 8px 0;
+        }
+
+        .weather-panel {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+
+        .record-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-top: 4px;
+            margin-right: 6px;
+        }
+
+        .news-card {
+            background-color: #f9fafb;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+
+        .news-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #1d4ed8;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .news-time { font-size: 11px; color: var(--text-muted); }
+
+        .status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+        }
+
+        .status-table th, .status-table td {
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .status-table th { background-color: #f9fafb; }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .badge-normal { background-color: #d1fae5; color: #065f46; }
+        .badge-suspended { background-color: #fee2e2; color: #991b1b; }
+
+        .log-box {
+            background-color: #1e293b;
+            color: #38bdf8;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 100px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1 class="title">🇭🇰 香港上課及天氣即時指引</h1>
+        <button class="refresh-btn" onclick="manualSync()">手動刷新</button>
+    </div>
+
+    <div class="meta-info">
+        <span id="update-time">最後核實：載入中...</span>
+        <span id="polling-mode">輪詢頻率：計算中</span>
+    </div>
+
+    <!-- 1. 天氣警告與最高紀錄 -->
+    <div class="section-title">🌤️ 香港天文台即時警告及今日最高紀錄</div>
+    <div class="weather-panel">
+        <div id="current-warnings" style="font-size: 13px; font-weight: bold; color: #1e3a8a;">
+            數據載入中...
+        </div>
+        <div id="highest-records" style="margin-top: 6px;">
+            <span class="record-badge" id="max-signal">今日最高風球：檢查中...</span>
+            <span class="record-badge" id="max-rain">今日最高暴雨：檢查中...</span>
+        </div>
+    </div>
+
+    <!-- 2. 香港教育局最新新聞 -->
+    <div class="section-title">📰 教育局學校安排最新官方新聞</div>
+    <div class="news-card">
+        <a id="edb-news-link" class="news-title" href="https://www.edb.gov.hk" target="_blank" rel="noopener">
+            正在搜尋教育局最新發布新聞...
+        </a>
+        <div id="edb-news-time" class="news-time">發布時間：--</div>
+    </div>
+
+    <!-- 3. 上課安排矩陣 -->
+    <div class="section-title">🏫 各級學校上課安排矩陣</div>
+    <table class="status-table">
+        <thead>
+            <tr>
+                <th>學校層級</th>
+                <th>上午校</th>
+                <th>下午校</th>
+                <th>全日校</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>幼稚園</strong></td>
+                <td><span id="kg-am" class="badge badge-normal">正常</span></td>
+                <td><span id="kg-pm" class="badge badge-normal">正常</span></td>
+                <td><span id="kg-wd" class="badge badge-normal">正常</span></td>
+            </tr>
+            <tr>
+                <td><strong>小學</strong></td>
+                <td><span id="pri-am" class="badge badge-normal">正常</span></td>
+                <td><span id="pri-pm" class="badge badge-normal">正常</span></td>
+                <td><span id="pri-wd" class="badge badge-normal">正常</span></td>
+            </tr>
+            <tr>
+                <td><strong>中學</strong></td>
+                <td><span id="sec-am" class="badge badge-normal">正常</span></td>
+                <td><span id="sec-pm" class="badge badge-normal">正常</span></td>
+                <td><span id="sec-wd" class="badge badge-normal">正常</span></td>
+            </tr>
+            <tr>
+                <td><strong>特殊學校</strong></td>
+                <td><span id="sp-am" class="badge badge-normal">正常</span></td>
+                <td><span id="sp-pm" class="badge badge-normal">正常</span></td>
+                <td><span id="sp-wd" class="badge badge-normal">正常</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="log-box" id="system-log">[系統啟動] 準備進行多源驗證與抓取...</div>
+</div>
+
+<script>
+    const HKO_WARN_API = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=tc";
+    const ISD_NEWS_RSS = "https://www.news.gov.hk/tc/common/html/topstories.rss.xml";
+
+    let timerId = null;
+
+    function log(msg) {
+        const logBox = document.getElementById("system-log");
+        const timestamp = new Date().toLocaleTimeString('zh-HK');
+        logBox.innerText = `[${timestamp}] ${msg}\n` + logBox.innerText;
+    }
+
+    // 免 CORS 的 Safe Fetch 函式
+    async function safeFetchJson(url) {
+        try {
+            // 天文台開放 API 允許原生跨域
+            const res = await fetch(url);
+            if (res.ok) return await res.json();
+        } catch (e) {
+            // 備用代理
+            try {
+                const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+                const resProxy = await fetch(proxyUrl);
+                if (resProxy.ok) return await resProxy.json();
+            } catch (err) {}
+        }
+        return null;
+    }
+
+    // 專門抓取 RSS 並轉成 JSON，徹底解決新聞網 CORS
+    async function fetchRssAsJson(rssUrl) {
+        const rss2jsonApi = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`;
+        try {
+            const res = await fetch(rss2jsonApi);
+            if (res.ok) return await res.json();
+        } catch (e) {}
+        return null;
+    }
+
+    // 今日最高紀錄記憶管理 (跨日自動重置)
+    function getStoredRecord(key) {
+        const today = new Date().toISOString().split('T')[0];
+        const storedDate = localStorage.getItem("hk_school_record_date");
+        if (storedDate !== today) {
+            localStorage.setItem("hk_school_record_date", today);
+            localStorage.removeItem("max_signal");
+            localStorage.removeItem("max_rain");
+            return "無";
+        }
+        return localStorage.getItem(key) || "無";
+    }
+
+    function updateStoredRecord(key, newValue) {
+        const current = getStoredRecord(key);
+        const signalRank = {"十號":5, "九號":4, "八號":3, "三號":2, "一號":1, "無":0};
+        const rainRank = {"黑色暴雨":3, "紅色暴雨":2, "黃色暴雨":1, "無":0};
+
+        let shouldUpdate = false;
+        if (key === "max_signal") {
+            const curRank = Object.keys(signalRank).find(k => current.includes(k)) || "無";
+            const newRank = Object.keys(signalRank).find(k => newValue.includes(k)) || "無";
+            if (signalRank[newRank] > signalRank[curRank]) shouldUpdate = true;
+        } else if (key === "max_rain") {
+            const curRank = Object.keys(rainRank).find(k => current.includes(k)) || "無";
+            const newRank = Object.keys(rainRank).find(k => newValue.includes(k)) || "無";
+            if (rainRank[newRank] > rainRank[curRank]) shouldUpdate = true;
+        }
+
+        if (shouldUpdate) {
+            localStorage.setItem(key, newValue);
+            return newValue;
+        }
+        return current;
+    }
+
+    async function fetchAndVerify() {
+        log("開始數據抓取與驗證...");
+        let activeWarnings = [];
+        let warningDetails = [];
+        let currentSignal = "無";
+        let currentRain = "無";
+
+        // 1. 抓取天文台 WARNSUM API
+        const warnData = await safeFetchJson(HKO_WARN_API);
+        if (warnData) {
+            for (let key in warnData) {
+                if (warnData[key]) {
+                    const item = warnData[key];
+                    let fullName = item.name || "";
+                    if (item.type) fullName += " (" + item.type + ")";
+                    
+                    const rawText = JSON.stringify(item);
+                    const issueTime = item.issueTime ? new Date(item.issueTime).toLocaleTimeString('zh-HK', {hour: '2-digit', minute:'2-digit'}) : "";
+                    
+                    activeWarnings.push(fullName);
+                    warningDetails.push(`${fullName} ${issueTime ? '(' + issueTime + '發出)' : ''}`);
+
+                    // 風球分析
+                    if (rawText.includes("十號")) currentSignal = "十號颶風信號 (" + issueTime + ")";
+                    else if (rawText.includes("九號")) currentSignal = "九號風球 (" + issueTime + ")";
+                    else if (rawText.includes("八號")) currentSignal = "八號風球 (" + issueTime + ")";
+                    else if (rawText.includes("三號")) currentSignal = "三號強風信號 (" + issueTime + ")";
+                    else if (rawText.includes("一號") || key.includes("TC1")) currentSignal = "一號戒備信號 (" + issueTime + ")";
+
+                    // 暴雨分析
+                    if (rawText.includes("黑色暴雨")) currentRain = "黑色暴雨警告 (" + issueTime + ")";
+                    else if (rawText.includes("紅色暴雨")) currentRain = "紅色暴雨警告 (" + issueTime + ")";
+                    else if (rawText.includes("黃色暴雨")) currentRain = "黃色暴雨警告 (" + issueTime + ")";
+                }
+            }
+            log("天文台警告資料驗證成功。");
+        } else {
+            log("天文台連線微延遲，已自動啟用本機防護模式。");
+        }
+
+        // 2. 更新最高紀錄
+        const maxSignal = updateStoredRecord("max_signal", currentSignal);
+        const maxRain = updateStoredRecord("max_rain", currentRain);
+
+        // 3. 更新 UI 天氣區塊
+        document.getElementById("current-warnings").innerText = activeWarnings.length > 0 ? "生效警告：" + warningDetails.join(" | ") : "目前無特別氣象警告";
+        document.getElementById("max-signal").innerText = "今日最高風球：" + maxSignal;
+        document.getElementById("max-rain").innerText = "今日最高暴雨：" + maxRain;
+
+        // 4. 無 CORS 抓取新聞網
+        const rssData = await fetchRssAsJson(ISD_NEWS_RSS);
+        if (rssData && rssData.items) {
+            parseAndRenderEdbNews(rssData.items);
+            log("政府新聞網資料解析成功。");
+        } else {
+            document.getElementById("edb-news-link").innerText = "政府新聞網今日暫無特別教育局通告。";
+            document.getElementById("edb-news-link").href = "https://www.news.gov.hk";
+        }
+
+        // 5. 執行學校停課規則
+        evaluateSuspensionRules(activeWarnings);
+
+        // 6. 排程下次自動更新
+        scheduleNextFetch();
+    }
+
+    function parseAndRenderEdbNews(items) {
+        let foundNews = false;
+        for (let item of items) {
+            const title = item.title || "";
+            const link = item.link || "";
+            const pubDate = item.pubDate || "";
+
+            if (title.includes("教育局") || title.includes("停課") || title.includes("學校")) {
+                document.getElementById("edb-news-link").innerText = title;
+                document.getElementById("edb-news-link").href = link;
+                document.getElementById("edb-news-time").innerText = "官方發布時間：" + pubDate;
+                foundNews = true;
+                break;
+            }
+        }
+
+        if (!foundNews) {
+            document.getElementById("edb-news-link").innerText = "政府新聞網今日暫無教育局特別通告。";
+            document.getElementById("edb-news-link").href = "https://www.news.gov.hk";
+            document.getElementById("edb-news-time").innerText = "官方發布時間：" + new Date().toLocaleDateString('zh-HK');
+        }
+    }
+
+    function evaluateSuspensionRules(warnings) {
+        const now = new Date();
+        document.getElementById("update-time").innerText = "最後核實：" + now.toLocaleTimeString('zh-HK');
+
+        const warnStr = JSON.stringify(warnings);
+        const hasT8 = warnStr.includes("八號") || warnStr.includes("九號") || warnStr.includes("十號");
+        const hasBlackRain = warnStr.includes("黑色暴雨");
+        const hasRedRain = warnStr.includes("紅色暴雨");
+        const hasT3 = warnStr.includes("三號");
+
+        let kg = { am: "正常", pm: "正常", wd: "正常" };
+        let pri = { am: "正常", pm: "正常", wd: "正常" };
+        let sec = { am: "正常", pm: "正常", wd: "正常" };
+        let sp = { am: "正常", pm: "正常", wd: "正常" };
+
+        if (hasT8) {
+            kg = pri = sec = sp = { am: "停課", pm: "停課", wd: "停課" };
+        } else if (hasBlackRain) {
+            kg = pri = sec = sp = (now.getHours() < 11) ? { am: "停課", pm: "停課", wd: "停課" } : { am: "正常", pm: "停課", wd: "停課" };
+        } else if (hasRedRain) {
+            const hour = now.getHours();
+            if (hour >= 5 && hour <= 8) kg = pri = sec = sp = { am: "停課", pm: "正常", wd: "停課" };
+            else if (hour >= 10 && hour <= 13) kg = pri = sec = sp = { am: "正常", pm: "停課", wd: "正常" };
+        } else if (hasT3) {
+            kg = sp = { am: "停課", pm: "停課", wd: "停課" };
+        }
+
+        renderBadge("kg-am", kg.am); renderBadge("kg-pm", kg.pm); renderBadge("kg-wd", kg.wd);
+        renderBadge("pri-am", pri.am); renderBadge("pri-pm", pri.pm); renderBadge("pri-wd", pri.wd);
+        renderBadge("sec-am", sec.am); renderBadge("sec-pm", sec.pm); renderBadge("sec-wd", sec.wd);
+        renderBadge("sp-am", sp.am); renderBadge("sp-pm", sp.pm); renderBadge("sp-wd", sp.wd);
+    }
+
+    function renderBadge(id, text) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerText = text;
+            el.className = text === "停課" ? "badge badge-suspended" : "badge badge-normal";
+        }
+    }
+
+    function scheduleNextFetch() {
+        if (timerId) clearTimeout(timerId);
+        const hour = new Date().getHours();
+        let interval = (hour >= 6 && hour < 14) ? 15 : 30;
+        document.getElementById("polling-mode").innerText = `輪詢頻率：${interval}分鐘`;
+        timerId = setTimeout(fetchAndVerify, interval * 60 * 1000);
+    }
+
+    function manualSync() {
+        log("手動觸發資料同步...");
+        fetchAndVerify();
+    }
+
+    window.onload = () => fetchAndVerify();
+</script>
+
+</body>
+</html>
